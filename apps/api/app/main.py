@@ -1,8 +1,5 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-from app.core.database import get_db
-
 
 app = FastAPI()
 
@@ -20,7 +17,3 @@ def create_user(user: UserCreate):
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return {"status": "ok"}
-
-@app.get("/db-demo")
-def db_demo(db: Session = Depends(get_db)):
-    return {"message": "Database Session connection successful!"}
