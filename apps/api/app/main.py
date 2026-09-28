@@ -16,4 +16,4 @@ def create_user(user: UserCreate):
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    return {"status": "ok"}
+    return HealthResponse(status="ok")
