@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Uuid, DateTime, FetchedValue, text
+from sqlalchemy import Uuid, DateTime, FetchedValue, text, ForeignKey, UniqueConstraint
 from uuid import UUID, uuid7
 from datetime import datetime
 
@@ -22,5 +22,17 @@ class Workspace(Base):
     name : Mapped[str]
     slug : Mapped[str] = mapped_column(unique=True, nullable=False)
     type : Mapped[str | None] = mapped_column(nullable=True)
+    created_at : Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at : Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"), server_onupdate=FetchedValue())
+
+class Membership(Base):
+    __tablename__ = "memberships"
+
+    __table_args__ = (UniqueConstraint("user_id", "workspace_id", name="uq_membership_user_workspace"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
+    user_id : Mapped[UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    workspace_id : Mapped[UUID] = mapped_column(Uuid, ForeignKey("workspaces.id"), nullable=False)
+    role : Mapped[str] = mapped_column(nullable=False)
     created_at : Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
     updated_at : Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"), server_onupdate=FetchedValue())

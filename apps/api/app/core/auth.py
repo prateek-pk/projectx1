@@ -3,6 +3,11 @@ import jwt
 from app.core.config import settings
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from uuid import UUID
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.models import User, Membership
 
 JWKS_URL = f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
 JWT_ISSUER = f"{settings.supabase_url}/auth/v1"
@@ -36,3 +41,36 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+def require_workspace_membership(
+        workspace_id: UUID,
+        current_user: dict = Depends(get_current_user),
+        db: Session = Depends(get_db)
+) -> Membership:
+    auth_user_id = UUID(current_user["sub"])
+
+    user = (
+        db.query(User)
+        .filter(User.auth_user_id == auth_user_id)
+        .first()
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Swaalay user not found",
+        )
+
+    membership = (
+        db.query(Membership)
+        .filter(Membership.user_id == user.id, Membership.workspace_id == workspace_id)
+        .first()
+    )
+
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to the specified workspace",
+        )
+
+    return membership
