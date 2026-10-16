@@ -5,6 +5,7 @@ from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from uuid import UUID
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.core.database import get_db
 from app.core.models import User, Membership
@@ -42,10 +43,24 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+def get_authenticated_db(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    auth_user_id = UUID(current_user["sub"])
+
+    with db.begin():
+        db.execute(
+            text("SELECT set_config('app.auth_user_id', :auth_user_id, true)"),
+            {"auth_user_id": str(auth_user_id)},
+        )
+
+        yield db
+
 def require_workspace_membership(
         workspace_id: UUID,
         current_user: dict = Depends(get_current_user),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_authenticated_db)
 ) -> Membership:
     auth_user_id = UUID(current_user["sub"])
 

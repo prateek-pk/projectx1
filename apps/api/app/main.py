@@ -1,13 +1,11 @@
-from re import sub
-
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from uuid import UUID
+from uuid import UUID, uuid7
 from datetime import datetime
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_authenticated_db
 from sqlalchemy.orm import Session
-from app.core.database import get_db
-from app.core.models import User, Workspace, Membership
+from sqlalchemy import text
+from app.core.models import User
 
 app = FastAPI()
 
@@ -26,7 +24,7 @@ def health():
     return {"status": "ok"}
 
 @app.post("/users/me", response_model=UserResponse)
-def provision_user(user_data: UserProvisionRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+def provision_user(user_data: UserProvisionRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_authenticated_db)):
     auth_user_id = UUID(current_user["sub"])
     user = db.query(User).filter(User.auth_user_id == auth_user_id).first()
     if user is None:
@@ -35,7 +33,7 @@ def provision_user(user_data: UserProvisionRequest, current_user: dict = Depends
             name=user_data.name,
         )
         db.add(user)
-        db.commit()
+        db.flush()
         db.refresh(user)
     return user
 
@@ -52,28 +50,45 @@ class WorkspaceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
 @app.post("/workspaces", response_model=WorkspaceResponse)
-def create_workspace(workspace_data: WorkspaceCreateRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_workspace(
+    workspace_data: WorkspaceCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_authenticated_db),
+):
     auth_user_id = UUID(current_user["sub"])
-    user = db.query(User).filter(User.auth_user_id == auth_user_id).first()
+
+    user = (
+        db.query(User)
+        .filter(User.auth_user_id == auth_user_id)
+        .first()
+    )
+
     if user is None:
-        raise HTTPException(status_code=404, detail="Swaalay user not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Swaalay user not found",
+        )
 
-    workspace = Workspace(
-        name=workspace_data.name,
-        slug=workspace_data.slug,
-        type=workspace_data.type,
-    )
-    db.add(workspace)
-    db.flush()  # Flush to get the workspace ID before creating membership
+    result = db.execute(
+        text("""
+            SELECT *
+            FROM public.create_workspace(
+                :workspace_id,
+                :membership_id,
+                :name,
+                :slug,
+                :type
+            )
+        """),
+        {
+            "workspace_id": uuid7(),
+            "membership_id": uuid7(),
+            "name": workspace_data.name,
+            "slug": workspace_data.slug,
+            "type": workspace_data.type,
+        },
+    ).mappings().one()
 
-    membership = Membership(
-        user_id=user.id,
-        workspace_id=workspace.id,
-        role="owner"
-    )
-    db.add(membership)
-    db.commit()
-    db.refresh(workspace)
-
-    return workspace
+    return dict(result)
